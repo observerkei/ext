@@ -244,7 +244,7 @@ json *load_str_key_val(const std::string &str, size_t &offset)
         (void)val;
     } else {
         for (const auto &ch: val)
-            if (!std::isdigit(ch))
+            if (!std::isdigit(ch) && '.' != ch)
                 return nullptr;
         type = json::type_t::NUM;
         num = std::stod(str);
