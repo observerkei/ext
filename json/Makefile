@@ -14,4 +14,10 @@ $(TARGET): *.c*
 clear:
 	rm -f $(TARGET)
 
-PHONY: clear
+asan: *.c*
+	$(CC) $^ $(FLAG) $(INC) $(LIB) $(ASAN_LIB) $(ASAN_FLAG)
+
+valgrind: $(TARGET)
+	valgrind --leak-check=full --show-reachable=yes --trace-children=yes ./$(TARGET)
+
+PHONY: clear asan valgrind

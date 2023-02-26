@@ -94,14 +94,14 @@ class json {
         { return m_type; }
         void set_key(const str_t &key)
         { m_key = key; }
-        double num()
-        { return NUM == m_type ? m_num : 0.0; }
-        str_t str()
-        { return STR == m_type ? *m_str : NULL; }
-        bool bol()
-        { return BOL == m_type ? m_bol : false; }
         str_t key()
         { return m_key; }
+        bool bol()
+        { return BOL == m_type ? m_bol : false; }
+        double num()
+        { return NUM == m_type ? m_num : 0; }
+        str_t *str()
+        { return STR == m_type ? m_str : nullptr; }
         arr_t *arr()
         { return ARR == m_type ? m_arr : nullptr; }
         obj_t *obj()
@@ -150,6 +150,7 @@ json::~json()
             delete obj;
         }
         m_obj->clear();
+        delete m_obj;
         m_obj = nullptr;
     }
     if (ARR == m_type) {
@@ -163,6 +164,7 @@ json::~json()
             delete iter;
         } 
         m_arr->clear();
+        delete m_arr;
         m_arr = nullptr;
     }
 }
@@ -183,7 +185,7 @@ std::string json::to_str()
             out_str += std::to_string(num());
             break;
         case STR:
-            out_str += '"' + str() + '"';
+            out_str += '"' + *str() + '"';
             break;
         case BOL:
             out_str += (bol() ? "true" : "false");
