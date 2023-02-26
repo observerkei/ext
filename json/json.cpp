@@ -37,6 +37,15 @@ class json {
             default: break;
         }
     }
+        ~json()
+    {
+        switch (m_type) {
+            case STR: del_str(); break;
+            case ARR: del_arr(); break;
+            case OBJ: del_obj(); break;
+            default: break;
+        }
+    }
         json(const str_t &key): 
             m_type(NUL), m_key(key) 
     {}
@@ -67,28 +76,6 @@ class json {
         json(const str_t &key, const std::initializer_list<json *> &li):
             m_type(OBJ), m_key(key), m_obj(new(std::nothrow) obj_t)
     { for (const auto &obj: li) m_obj->push_back(obj); }
-        ~json();
-
-        str_t to_str();
-        int to_file(const char *file_name);
-        static json *load_str(const str_t &str);
-        static json *load_file(const char *file_name);
-
-        bool is_num(const str_t &str) 
-        {
-            for (const auto &ch: str)
-                if (!std::isdigit(ch) || '.' == ch)
-                    return false;
-            return true;
-        }
-
-        bool is_bol(const str_t &str) 
-        {
-            return (((str.length() == (sizeof("true")-1)) && 
-                        !strcasecmp("true", str.c_str())) ||
-                    ((str.length() == (sizeof("false")-1)) &&
-                     !strcasecmp("false", str.c_str())));
-        }
 
         type_t type()
         { return m_type; }
@@ -107,6 +94,103 @@ class json {
         obj_t *obj()
         { return OBJ == m_type ? m_obj : nullptr; }
 
+        bool is_num(const str_t &str) 
+        {
+            for (const auto &ch: str)
+                if (!std::isdigit(ch) && '.' != ch)
+                    return false;
+            return true;
+        }
+
+        bool is_bol(const str_t &str) 
+        {
+            return (((str.length() == (sizeof("true")-1)) && 
+                        !strcasecmp("true", str.c_str())) ||
+                    ((str.length() == (sizeof("false")-1)) &&
+                        !strcasecmp("false", str.c_str())));
+        }
+
+        void del_str()
+        {
+            assert(STR == m_type);
+            delete m_str;
+            m_str = nullptr;
+        }
+
+        void del_arr()
+        {
+            assert(ARR == m_type);
+            for (auto iter: *m_arr) {
+                if (!iter) {
+                    continue;
+                }
+
+                //dmsg("del: %s\n", (iter)->to_str().c_str());
+
+                delete iter;
+            } 
+            m_arr->clear();
+            delete m_arr;
+            m_arr = nullptr;
+        }
+
+        void del_obj()
+        {
+            assert(OBJ == m_type);
+            for (auto obj: *m_obj) {
+                if (!obj) {
+                    continue;
+                }
+                // dmsg("del: %s\n", obj->to_str().c_str());
+
+                delete obj;
+            }
+            m_obj->clear();
+            delete m_obj;
+            m_obj = nullptr;
+        }
+
+        int set_type(type_t type)
+        {
+            if (type == m_type)
+                return 0;
+            switch (m_type) {
+                case STR: del_str(); break;
+                case ARR: del_arr(); break;
+                case OBJ: del_obj(); break;
+                default: break;
+            }
+            switch (type) {
+                case BOL: 
+                    m_bol = bol_t(); 
+                    break;
+                case NUM: 
+                    m_num = num_t();
+                    break;
+                case STR: 
+                    m_str = new(std::nothrow) str_t(); 
+                    if (!m_str)
+                        return -1;
+                    break;
+                case ARR: 
+                    m_arr = new(std::nothrow) arr_t(); 
+                    if (!m_arr)
+                        return -1;
+                    break;
+                case OBJ:
+                    m_obj = new(std::nothrow) obj_t();
+                    if (!m_obj)
+                        return -1;
+                    break;
+                case NUL: 
+                    break;
+                default: 
+                    break;
+            }
+
+            return 0;
+        }
+
         json *operator[] (const str_t &key)
         { 
             if (OBJ != m_type) 
@@ -121,6 +205,11 @@ class json {
             return add;
         }
 
+        str_t to_str();
+        int to_file(const char *file_name);
+        static json *load_str(const str_t &str);
+        static json *load_file(const char *file_name);
+
     private:
         type_t m_type;
         str_t m_key;
@@ -132,42 +221,6 @@ class json {
             obj_t *m_obj;
         };
 };
-
-json::~json()
-{
-    //dmsg("type: %d\n", m_type);
-    if (STR == m_type) {
-        delete m_str;
-        m_str = nullptr;
-    }
-    if (OBJ == m_type) {
-        for (auto obj: *m_obj) {
-            if (!obj) {
-                continue;
-            }
-            // dmsg("del: %s\n", obj->to_str().c_str());
-
-            delete obj;
-        }
-        m_obj->clear();
-        delete m_obj;
-        m_obj = nullptr;
-    }
-    if (ARR == m_type) {
-        for (auto iter: *m_arr) {
-            if (!iter) {
-                continue;
-            }
-
-            //dmsg("del: %s\n", (iter)->to_str().c_str());
-
-            delete iter;
-        } 
-        m_arr->clear();
-        delete m_arr;
-        m_arr = nullptr;
-    }
-}
 
 std::string json::to_str()
 {
