@@ -2,6 +2,7 @@
 #include <new>
 #include <sstream>
 #include <vector>
+#include <map>
 #include <string>
 #include <initializer_list>
 #include <fstream>
@@ -21,7 +22,7 @@ class json {
         typedef double num_t;
         typedef std::string str_t;
         typedef std::vector<json *> arr_t;
-        typedef std::vector<json *> obj_t;
+        typedef std::map<str_t, json *> obj_t;
 
     public:
         json(type_t type):
@@ -37,62 +38,174 @@ class json {
             default: break;
         }
     }
-        ~json()
-    {
-        switch (m_type) {
-            case STR: del_str(); break;
-            case ARR: del_arr(); break;
-            case OBJ: del_obj(); break;
-            default: break;
-        }
-    }
+
         json(const str_t &key): 
             m_type(NUL), m_key(key) 
     {}
+
         json(const str_t &key, const bool        &bol): 
             m_type(BOL), m_key(key), m_bol(bol) 
     {}
+
         json(const str_t &key, const double      &num): 
             m_type(NUM), m_key(key), m_num(num) 
     {}
+
         json(const str_t &key, const int         &num): 
             m_type(NUM), m_key(key), m_num(num) 
     {}
+
         json(const str_t &key, const str_t &str): 
             m_type(STR), m_key(key), m_str(new(std::nothrow) str_t(str)) 
     {}
+
         json(const str_t &key, const std::initializer_list<double> &li):
             m_type(ARR), m_key(key), m_arr(new(std::nothrow) arr_t)
-    { for (const auto &num: li) m_arr->push_back(new(std::nothrow) json("", num)); }
+    { 
+        for (const auto &num: li) m_arr->push_back(new(std::nothrow) json("", num)); 
+    }
 
         json(const str_t &key, const std::initializer_list<int> &li):
             m_type(ARR), m_key(key), m_arr(new(std::nothrow) arr_t)
-    { for (const auto &num: li) m_arr->push_back(new(std::nothrow) json("", num));}
+    { 
+        for (const auto &num: li) m_arr->push_back(new(std::nothrow) json("", num));
+    }
 
         json(const str_t &key, const std::initializer_list<const str_t> &li):
             m_type(ARR), m_key(key), m_arr(new(std::nothrow) arr_t)
-    { for (const auto &str: li) m_arr->push_back(new(std::nothrow) json("", str)); }
+    { 
+        for (const auto &str: li) m_arr->push_back(new(std::nothrow) json("", str)); 
+    }
 
         json(const str_t &key, const std::initializer_list<json *> &li):
             m_type(OBJ), m_key(key), m_obj(new(std::nothrow) obj_t)
-    { for (const auto &obj: li) m_obj->push_back(obj); }
+    {
+        for (const auto &obj: li) (*m_obj)[obj->m_key] = obj; 
+    }
+
+        ~json()
+        {
+            switch (m_type) {
+                case STR: del_str(); break;
+                case ARR: del_arr(); break;
+                case OBJ: del_obj(); break;
+                default: break;
+            }
+        }
+
+        json *operator=(const bol_t &bol)
+        {
+            if (set_type(BOL))
+                return nullptr;
+
+            m_bol = bol;
+
+            return this;
+        }
+
+        json *operator=(const int &num)
+        {
+            return operator=(num_t(num));
+        }
+
+        json *operator=(const num_t &num)
+        {
+            if (set_type(NUM))
+                return nullptr;
+            m_num = num;
+
+            return this;
+        }
+
+        json *operator=(const char *str)
+        {
+            return operator=(str_t(str));
+        }
+
+        json *operator=(const str_t &str)
+        {
+            if (set_type(STR))
+                return nullptr;
+            *m_str = str;
+
+            return this;
+        }
+
+        json *operator=(const arr_t &arr)
+        {
+            if (set_type(ARR))
+                return nullptr;
+
+            //todo
+
+            return this;
+        }
+
+        json *operator=(const obj_t &obj)
+        {
+            if (set_type(OBJ))
+                return nullptr;
+
+            //todo
+
+            return this;
+        }
+
+        json *operator[](const str_t &key)
+        { 
+            if (OBJ != m_type) 
+                return nullptr;
+
+            auto iter = m_obj->find(key);
+            if (iter != m_obj->end())
+                return iter->second;
+
+            json *add = new(std::nothrow) json(key);
+            if (!add) 
+                return nullptr;
+            (*m_obj)[key] = add;
+            return add;
+        }
 
         type_t type()
-        { return m_type; }
+        { 
+            return m_type; 
+        }
+
         void set_key(const str_t &key)
-        { m_key = key; }
+        { 
+            m_key = key; 
+        }
+
         str_t key()
-        { return m_key; }
+        {
+            return m_key;
+        }
+
         bool bol()
-        { return BOL == m_type ? m_bol : false; }
+        { 
+            return BOL == m_type ? m_bol : false; 
+        }
+
         double num()
-        { return NUM == m_type ? m_num : 0; }
+        { 
+            return NUM == m_type ? m_num : 0; 
+        }
+
         str_t *str()
-        { return STR == m_type ? m_str : nullptr; }
+        {
+            return STR == m_type ? m_str : nullptr; 
+        }
+
         arr_t *arr()
-        { return ARR == m_type ? m_arr : nullptr; }
+        {
+            return ARR == m_type ? m_arr : nullptr;
+        }
+
         obj_t *obj()
-        { return OBJ == m_type ? m_obj : nullptr; }
+        { 
+            return OBJ == m_type ? m_obj : nullptr; 
+        }
 
         bool is_num(const str_t &str) 
         {
@@ -138,12 +251,12 @@ class json {
         {
             assert(OBJ == m_type);
             for (auto obj: *m_obj) {
-                if (!obj) {
+                if (!obj.second) {
                     continue;
                 }
                 // dmsg("del: %s\n", obj->to_str().c_str());
 
-                delete obj;
+                delete obj.second;
             }
             m_obj->clear();
             delete m_obj;
@@ -188,27 +301,20 @@ class json {
                     break;
             }
 
-            return 0;
-        }
+            m_type = type;
 
-        json *operator[] (const str_t &key)
-        { 
-            if (OBJ != m_type) 
-                return nullptr;
-            for (auto obj: *m_obj) 
-                if (key == obj->m_key) 
-                    return obj;
-            json *add = new(std::nothrow) json(key);
-            if (!add) 
-                return nullptr;
-            m_obj->push_back(add);
-            return add;
+            return 0;
         }
 
         str_t to_str();
         int to_file(const char *file_name);
         static json *load_str(const str_t &str);
         static json *load_file(const char *file_name);
+
+    private:
+        static json *load_str_arr(const str_t &str, size_t &offset);
+        static json *load_str_obj(const str_t &str, size_t &offset);
+        static json *load_str_key_val(const str_t &str, size_t &offset);
 
     private:
         type_t m_type;
@@ -222,7 +328,7 @@ class json {
         };
 };
 
-std::string json::to_str()
+json::str_t json::to_str()
 {
     str_t out_str;
     bool is_first = true;
@@ -267,11 +373,11 @@ std::string json::to_str()
                 break;
             }
             for (const auto &iter: *obj()) {
-                if (!iter)
+                if (!iter.second)
                     continue;
                 if (!is_first)
                     out_str += ", ";
-                out_str += iter->to_str();
+                out_str += iter.second->to_str();
                 is_first = false;
             }
             out_str += " }";
@@ -283,10 +389,7 @@ std::string json::to_str()
     return out_str;
 }
 
-json *load_str_arr(const std::string &str, size_t &offset);
-json *load_str_obj(const std::string &str, size_t &offset);
-
-json *load_str_key_val(const std::string &str, size_t &offset)
+json *json::load_str_key_val(const str_t &str, size_t &offset)
 {
     std::string key;
     std::string val;
@@ -411,7 +514,7 @@ json *load_str_key_val(const std::string &str, size_t &offset)
     return js;
 }
 
-json *load_str_arr(const std::string &str, size_t &offset)
+json *json::load_str_arr(const str_t &str, size_t &offset)
 {
     json *arr = nullptr;
     dmsg("arr:instr:%c", str.at(offset));
@@ -543,7 +646,7 @@ err:
     return nullptr;
 }
 
-json *load_str_obj(const std::string &str, size_t &offset)
+json *json::load_str_obj(const str_t &str, size_t &offset)
 {
     if ('{' != str.at(offset))
         return nullptr;
@@ -579,7 +682,7 @@ json *load_str_obj(const std::string &str, size_t &offset)
             goto err;
         assert(iter);
         assert(o);
-        o->push_back(iter);
+        (*o)[iter->key()] = iter;
         if (',' == str.at(offset)) {
             ++offset;
             continue;
@@ -662,14 +765,11 @@ json *json::load_file(const char *file_name)
     instream << infile.rdbuf();
     str_t instr(instream.str());
 
+    infile.close();
 
     dmsg("instr: %s\n", instr.c_str());
 
-    json *load_json = json::load_str(instr);
-
-    infile.close();
-
-    return load_json;
+    return json::load_str(instr);
 }
 
 #ifndef main
@@ -701,6 +801,18 @@ int main(int argc, char *argv[])
             new json("B", { 1, 2, 3}),
             new json("C")
             });
+
+    cout << "before: " << jobj.to_str() << "\n";
+    try {
+        *jobj["fuck"] = true;
+        *jobj["moe"] = "?";
+        *jobj["*"] = 996.007;
+        *jobj["-"] = 0;
+        *jobj["num"] = jobj["*"]->num() + 1000;
+    } catch (json e) {
+        cout << "catch fail: " << e.to_str() << "\n";
+    }
+    cout << "after:  " << jobj.to_str() << "\n";
 
     cout << js.to_str() << "\n"
         << jstr.to_str() << "\n" 
