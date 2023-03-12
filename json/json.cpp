@@ -93,78 +93,148 @@ class json {
             }
         }
 
-        json *operator=(const bol_t &bol)
+        json &operator=(const bol_t &bol)
         {
-            if (set_type(BOL))
-                return nullptr;
+            if (set_type(BOL)) {
+                throw json("fail to set type bol");
+                return *this;
+            }
 
             m_bol = bol;
 
-            return this;
+            return *this;
         }
 
-        json *operator=(const int &num)
+        json &operator=(const int &num)
         {
             return operator=(num_t(num));
         }
 
-        json *operator=(const num_t &num)
+        json &operator=(const num_t &num)
         {
-            if (set_type(NUM))
-                return nullptr;
+            if (set_type(NUM)) {
+                throw json("fail to set type num");
+                return *this;
+            }
             m_num = num;
 
-            return this;
+            return *this;
         }
 
-        json *operator=(const char *str)
+        json &operator=(const char *str)
         {
             return operator=(str_t(str));
         }
 
-        json *operator=(const str_t &str)
+        json &operator=(const str_t &str)
         {
-            if (set_type(STR))
-                return nullptr;
+            if (set_type(STR)) {
+                throw json("fail to set type str");
+                return *this;
+            }
             *m_str = str;
 
-            return this;
+            return *this;
         }
 
-        json *operator=(const arr_t &arr)
+        json &operator=(const arr_t &arr)
         {
-            if (set_type(ARR))
-                return nullptr;
+            if (set_type(ARR)) {
+                throw json("fial to set type arr");
+                return *this;
+            }
 
-            //todo
+            for (const auto &iter: arr) {
+                json *dup_js = dup_json(iter);
+                if (dup_js) {
+                    throw json("fail to dup arr");
+                    return *this;
+                }
+                m_arr->push_back(dup_js);
+            }
 
-            return this;
+            return *this;
         }
 
-        json *operator=(const obj_t &obj)
+        json &operator=(const json &js)
         {
-            if (set_type(OBJ))
-                return nullptr;
+            std::string err;
 
-            //todo
+            del_type();
 
-            return this;
+            switch (js.m_type) {
+                case NUM: 
+                    m_type = NUM;
+                    m_num = js.m_num; 
+                    break;
+                case BOL: 
+                    m_type = BOL;
+                    m_bol = js.m_bol; 
+                    break;
+                case STR: 
+                    m_type = STR;
+                    m_str = new(std::nothrow) str_t(*js.m_str);
+                    if (!m_str)
+                        throw json("fail to dup str");
+                    break;
+                case ARR:
+                    m_type = ARR;
+                    m_arr = dup_arr(js.m_arr);
+                    if (!m_arr)
+                        throw json("fail to dup arr");
+                    break;
+                case OBJ:
+                    m_type = OBJ;
+                    m_obj = dup_obj(js.m_obj);
+                    if (!m_obj)
+                        throw json("fail to dup obj");
+                    break;
+                case NUL:
+                default:
+                    m_type = NUL;
+                    break;
+            }
+
+            return *this;
         }
 
-        json *operator[](const str_t &key)
+        json &operator=(const obj_t &obj)
+        {
+            if (set_type(STR)) {
+                throw json("fail to set type obj");
+                return *this;
+            }
+
+            for (const auto &iter: obj) {
+                json *dup_js = dup_json(iter.second);
+                if (dup_js) {
+                    throw json("fail to dup obj");
+                    return *this;
+                }
+                (*m_obj)[iter.first] = dup_js;
+            }
+
+            return *this;
+        }
+
+        json &operator[](const str_t &key)
         { 
-            if (OBJ != m_type) 
-                return nullptr;
+            if (OBJ != m_type) {
+                throw json("not obj");
+                return *this;
+            } 
 
             auto iter = m_obj->find(key);
             if (iter != m_obj->end())
-                return iter->second;
+                return *iter->second;
 
             json *add = new(std::nothrow) json(key);
-            if (!add) 
-                return nullptr;
+            if (!add) {
+                throw json(std::string("fail to add key: ") + key);
+                return *this;
+            }
             (*m_obj)[key] = add;
-            return add;
+            return *add;
         }
 
         type_t type()
@@ -220,7 +290,20 @@ class json {
             return (((str.length() == (sizeof("true")-1)) && 
                         !strcasecmp("true", str.c_str())) ||
                     ((str.length() == (sizeof("false")-1)) &&
-                        !strcasecmp("false", str.c_str())));
+                     !strcasecmp("false", str.c_str())));
+        }
+
+        void del_type()
+        {
+            switch (m_type) {
+                case STR: del_str(); break;
+                case ARR: del_arr(); break;
+                case OBJ: del_obj(); break;
+                case BOL: m_bol = false; break;
+                case NUM: m_num = 0; break;
+                case NUL:
+                default: m_type = NUL; break;
+            }
         }
 
         void del_str()
@@ -228,12 +311,13 @@ class json {
             assert(STR == m_type);
             delete m_str;
             m_str = nullptr;
+            m_type = NUL;
         }
 
         void del_arr()
         {
             assert(ARR == m_type);
-            for (auto iter: *m_arr) {
+            for (auto &iter: *m_arr) {
                 if (!iter) {
                     continue;
                 }
@@ -245,12 +329,13 @@ class json {
             m_arr->clear();
             delete m_arr;
             m_arr = nullptr;
+            m_type = NUL;
         }
 
         void del_obj()
         {
             assert(OBJ == m_type);
-            for (auto obj: *m_obj) {
+            for (auto &obj: *m_obj) {
                 if (!obj.second) {
                     continue;
                 }
@@ -261,18 +346,16 @@ class json {
             m_obj->clear();
             delete m_obj;
             m_obj = nullptr;
+            m_type = NUL;
         }
 
         int set_type(type_t type)
         {
             if (type == m_type)
                 return 0;
-            switch (m_type) {
-                case STR: del_str(); break;
-                case ARR: del_arr(); break;
-                case OBJ: del_obj(); break;
-                default: break;
-            }
+
+            del_type();
+
             switch (type) {
                 case BOL: 
                     m_bol = bol_t(); 
@@ -296,7 +379,6 @@ class json {
                         return -1;
                     break;
                 case NUL: 
-                    break;
                 default: 
                     break;
             }
@@ -315,6 +397,9 @@ class json {
         static json *load_str_arr(const str_t &str, size_t &offset);
         static json *load_str_obj(const str_t &str, size_t &offset);
         static json *load_str_key_val(const str_t &str, size_t &offset);
+        static json *dup_json(const json *js);
+        static arr_t *dup_arr(const arr_t *arr);
+        static obj_t *dup_obj(const obj_t *obj);
 
     private:
         type_t m_type;
@@ -772,6 +857,67 @@ json *json::load_file(const char *file_name)
     return json::load_str(instr);
 }
 
+json *json::dup_json(const json *js)
+{
+    switch (js->m_type) {
+        case NUM: return new(std::nothrow) json(js->m_key, js->m_num);
+        case BOL: return new(std::nothrow) json(js->m_key, js->m_bol);
+        case STR: return new(std::nothrow) json(js->m_key, js->m_str);
+        case ARR: return new(std::nothrow) json(js->m_key, dup_arr(js->m_arr));
+        case OBJ: return new(std::nothrow) json(js->m_key, dup_obj(js->m_obj));
+        case NUL:
+        default:  return new(std::nothrow) json(js->m_key);
+    }
+}
+
+json::arr_t *json::dup_arr(const arr_t *arr)
+{
+    assert(arr);
+
+    arr_t *new_arr = new(std::nothrow) arr_t;
+    if (!new_arr)
+        return nullptr;
+
+    for (const auto &iter: *arr) {
+        json *dup_iter = dup_json(iter);
+        if (!dup_iter)
+            goto err;
+
+        new_arr->push_back(dup_iter);
+    }
+
+    return new_arr;
+
+err:
+    if (new_arr)
+        delete new_arr;
+    return nullptr;
+}
+
+json::obj_t *json::dup_obj(const obj_t *obj)
+{
+    assert(obj);
+
+    obj_t *new_obj = new(std::nothrow) obj_t;
+    if (!new_obj)
+        return nullptr;
+
+    for (const auto &iter: *obj) {
+        json *dup_iter = dup_json(iter.second);
+        if (!dup_iter)
+            goto err;
+
+        (*new_obj)[dup_iter->key()] = dup_iter;
+    }
+
+    return new_obj;
+
+err:
+    if (new_obj)
+        delete new_obj;
+    return nullptr;
+}
+
 #ifndef main
 
 #include <iostream>
@@ -804,11 +950,11 @@ int main(int argc, char *argv[])
 
     cout << "before: " << jobj.to_str() << "\n";
     try {
-        *jobj["fuck"] = true;
-        *jobj["moe"] = "?";
-        *jobj["*"] = 996.007;
-        *jobj["-"] = 0;
-        *jobj["num"] = jobj["*"]->num() + 1000;
+        jobj["fuck"] = true;
+        jobj["moe"] = "?";
+        jobj["*"] = 996.007;
+        jobj["-"] = 0;
+        jobj["num"] = jobj["*"].num() + 1000;
     } catch (json e) {
         cout << "catch fail: " << e.to_str() << "\n";
     }
@@ -821,7 +967,7 @@ int main(int argc, char *argv[])
         << jarr_str.to_str() << "\n"
         << jarr_num.to_str() << "\n"
         << root.to_str() << "\n"
-        << root["B"]->to_str() << "\n"
+        << root["B"].to_str() << "\n"
         << "\n";
 
     cout << "out > 1.js" << "\n";
