@@ -1,419 +1,457 @@
 #include <cctype>
 #include <new>
 #include <sstream>
-#include <vector>
-#include <map>
-#include <string>
-#include <initializer_list>
 #include <fstream>
 #include <cstring>
 #include <cassert>
+#include <cstdio>
 
 #include "json.h"
 
-#include <cstdio>
 #define dmsg(fmt, ...) if (g_enable_json_dbg) fprintf(stdout, "[%s:%s:%d] " fmt "\n", __FILE__, __func__, __LINE__, ##__VA_ARGS__)
 static bool g_enable_json_dbg = false;
 
-class json {
-    public:
-        typedef enum { BOL, NUM, STR, ARR, OBJ, NUL, } type_t;
-        typedef bool bol_t;
-        typedef double num_t;
-        typedef std::string str_t;
-        typedef std::vector<json *> arr_t;
-        typedef std::map<str_t, json *> obj_t;
+json::json(const type_t &type):
+    m_type(type), m_key("")
+{
+    switch (type) {
+        case BOL: m_bol = bol_t(); break;
+        case NUM: m_num = num_t(); break;
+        case STR: m_str = new(std::nothrow) str_t(); break;
+        case ARR: m_arr = new(std::nothrow) arr_t(); break;
+        case OBJ: m_obj = new(std::nothrow) obj_t(); break;
+        case NUL: break;
+        default: break;
+    }
+}
 
-    public:
-        json(type_t type):
-            m_type(type), m_key("")
-    {
-        switch (type) {
-            case BOL: m_bol = bol_t(); break;
-            case NUM: m_num = num_t(); break;
-            case STR: m_str = new(std::nothrow) str_t(); break;
-            case ARR: m_arr = new(std::nothrow) arr_t(); break;
-            case OBJ: m_obj = new(std::nothrow) obj_t(); break;
-            case NUL: break;
-            default: break;
-        }
+json::json(const str_t &key): 
+    m_type(NUL), m_key(key) 
+{}
+
+json::json(const str_t &key, const bol_t     &bol): 
+    m_type(BOL), m_key(key), m_bol(bol) 
+{}
+
+json::json(const str_t &key, const int       &num): 
+    m_type(NUM), m_key(key), m_num(num) 
+{}
+
+json::json(const str_t &key, const num_t     &num): 
+    m_type(NUM), m_key(key), m_num(num) 
+{}
+
+json::json(const str_t &key, const str_t     &str): 
+    m_type(STR), m_key(key), m_str(new(std::nothrow) str_t(str)) 
+{}
+
+json::json(const str_t &key, const std::initializer_list<int>    &li):
+    m_type(ARR), m_key(key), m_arr(new(std::nothrow) arr_t)
+{ 
+    for (const auto &num: li) m_arr->push_back(new(std::nothrow) json("", num));
+}
+
+json::json(const str_t &key, const std::initializer_list<num_t>  &li):
+    m_type(ARR), m_key(key), m_arr(new(std::nothrow) arr_t)
+{ 
+    for (const auto &num: li) m_arr->push_back(new(std::nothrow) json("", num)); 
+}
+
+json::json(const str_t &key, const std::initializer_list<str_t>  &li):
+    m_type(ARR), m_key(key), m_arr(new(std::nothrow) arr_t)
+{ 
+    for (const auto &str: li) m_arr->push_back(new(std::nothrow) json("", str)); 
+}
+
+json::json(const str_t &key, const std::initializer_list<json *> &li):
+    m_type(OBJ), m_key(key), m_obj(new(std::nothrow) obj_t)
+{
+    for (const auto &obj: li) (*m_obj)[obj->m_key] = obj; 
+}
+
+json::~json()
+{
+    switch (m_type) {
+        case STR: del_str(); break;
+        case ARR: del_arr(); break;
+        case OBJ: del_obj(); break;
+        default: break;
+    }
+}
+
+json *json::operator=(const bol_t &bol)
+{
+    if (set_type(BOL)) {
+        dmsg("fail to set type bol");
+        return nullptr;
     }
 
-        json(const str_t &key): 
-            m_type(NUL), m_key(key) 
-    {}
+    m_bol = bol;
 
-        json(const str_t &key, const bool        &bol): 
-            m_type(BOL), m_key(key), m_bol(bol) 
-    {}
+    return this;
+}
 
-        json(const str_t &key, const double      &num): 
-            m_type(NUM), m_key(key), m_num(num) 
-    {}
+json *json::operator=(const int &num)
+{
+    return operator=(num_t(num));
+}
 
-        json(const str_t &key, const int         &num): 
-            m_type(NUM), m_key(key), m_num(num) 
-    {}
-
-        json(const str_t &key, const str_t &str): 
-            m_type(STR), m_key(key), m_str(new(std::nothrow) str_t(str)) 
-    {}
-
-        json(const str_t &key, const std::initializer_list<double> &li):
-            m_type(ARR), m_key(key), m_arr(new(std::nothrow) arr_t)
-    { 
-        for (const auto &num: li) m_arr->push_back(new(std::nothrow) json("", num)); 
+json *json::operator=(const num_t &num)
+{
+    if (set_type(NUM)) {
+        dmsg("fail to set type num");
+        return nullptr;
     }
 
-        json(const str_t &key, const std::initializer_list<int> &li):
-            m_type(ARR), m_key(key), m_arr(new(std::nothrow) arr_t)
-    { 
-        for (const auto &num: li) m_arr->push_back(new(std::nothrow) json("", num));
+    m_num = num;
+
+    return this;
+}
+
+json *json::operator=(const char *str)
+{
+    return operator=(str_t(str));
+}
+
+json *json::operator=(const str_t &str)
+{
+    if (set_type(STR)) {
+        dmsg("fail to set type str");
+        return nullptr;
     }
 
-        json(const str_t &key, const std::initializer_list<const str_t> &li):
-            m_type(ARR), m_key(key), m_arr(new(std::nothrow) arr_t)
-    { 
-        for (const auto &str: li) m_arr->push_back(new(std::nothrow) json("", str)); 
+    *m_str = str;
+
+    return this;
+}
+
+json *json::operator=(const arr_t &arr)
+{
+    arr_t *new_arr = new(std::nothrow) arr_t;
+    if (!new_arr) {
+        dmsg("fail to new arr_t");
+        goto err;
     }
 
-        json(const str_t &key, const std::initializer_list<json *> &li):
-            m_type(OBJ), m_key(key), m_obj(new(std::nothrow) obj_t)
-    {
-        for (const auto &obj: li) (*m_obj)[obj->m_key] = obj; 
+    for (const auto &iter: arr) {
+        json *dup_js = dup_json(iter);
+        if (!dup_js) {
+            dmsg("fail to dup arr");
+            goto err;
+        }
+
+        new_arr->push_back(dup_js);
     }
 
-        ~json()
-        {
-            switch (m_type) {
-                case STR: del_str(); break;
-                case ARR: del_arr(); break;
-                case OBJ: del_obj(); break;
-                default: break;
+    del_type();
+    m_type = ARR;
+    m_arr = new_arr;
+
+    return this;
+
+err:
+    if (new_arr)
+        delete new_arr;
+    return nullptr;
+}
+
+json *json::operator=(const obj_t &obj)
+{
+    obj_t *new_obj = new(std::nothrow) obj_t;
+    if (!new_obj)
+        goto err;
+
+    for (const auto &iter: obj) {
+        json *dup_js = dup_json(iter.second);
+        if (!dup_js) {
+            dmsg("fail to dup obj key:%s", iter.first.c_str());
+            goto err;
+        }
+
+        (*new_obj)[iter.first] = dup_js;
+    }
+    del_type();
+    m_type = OBJ;
+    m_obj = new_obj;
+
+    return this;
+
+err:
+    if (new_obj)
+        delete new_obj;
+    return nullptr;
+}
+
+json *json::operator=(const json &js)
+{
+    str_t *new_str = nullptr;
+    arr_t *new_arr = nullptr;
+    obj_t *new_obj = nullptr;
+
+    switch (js.m_type) {
+        case STR:
+            new_str = new(std::nothrow) str_t(*js.m_str);
+            if (!new_str) {
+                dmsg("fail to dup str");
+                goto err;
             }
-        }
-
-        json &operator=(const bol_t &bol)
-        {
-            if (set_type(BOL)) {
-                throw json("fail to set type bol");
-                return *this;
+            break;
+        case ARR:
+            new_arr = dup_arr(js.m_arr);
+            if (!new_arr) {
+                dmsg("fail to dup arr");
+                goto err;
             }
-
-            m_bol = bol;
-
-            return *this;
-        }
-
-        json &operator=(const int &num)
-        {
-            return operator=(num_t(num));
-        }
-
-        json &operator=(const num_t &num)
-        {
-            if (set_type(NUM)) {
-                throw json("fail to set type num");
-                return *this;
+            break;
+        case OBJ:
+            new_obj = dup_obj(js.m_obj);
+            if (!new_obj) {
+                dmsg("fail to dup obj");
+                goto err;
             }
-            m_num = num;
+            break;
+        case BOL: 
+        case NUM: 
+        case NUL:
+        default:
+            break;
+    }
 
-            return *this;
+    del_type();
+
+    switch (js.m_type) {
+        case BOL: m_bol = js.m_bol; break;
+        case NUM: m_num = js.m_num; break;
+        case STR: m_str = new_str; break;
+        case ARR: m_arr = new_arr; break;
+        case OBJ: m_obj = new_obj; break;
+        case NUL: break;
+        default: break;
+    }
+
+    m_type = js.m_type;
+
+    return this;
+
+err:
+    if (new_str)
+        delete new_str;
+    if (new_obj)
+        delete new_obj;
+    if (new_arr)
+        delete new_arr;
+
+    return nullptr;
+}
+
+json *json::operator[](const str_t &key)
+{ 
+    if (OBJ != m_type) {
+        dmsg("not obj");
+        return nullptr;
+    }
+
+    auto iter = m_obj->find(key);
+    if (iter != m_obj->end())
+        return iter->second;
+
+    json *add = new(std::nothrow) json(key);
+    if (!add) {
+        dmsg("fail to add key: %s", key.c_str());
+        return nullptr;
+    }
+
+    (*m_obj)[key] = add;
+    return add;
+}
+
+int json::set_type(const type_t &type)
+{
+    if (type == m_type)
+        return 0;
+
+    str_t *new_str = nullptr;
+    arr_t *new_arr = nullptr;
+    obj_t *new_obj = nullptr;
+
+    switch (type) {
+        case STR:
+            new_str = new(std::nothrow) str_t();
+            if (!new_str)
+                goto err;
+            break;
+        case ARR:
+            new_arr = new(std::nothrow) arr_t();
+            if (!new_arr)
+                goto err;
+            break;
+        case OBJ:
+            new_obj = new(std::nothrow) obj_t();
+            if (!new_obj)
+                goto err;
+            break;
+        case BOL:
+        case NUM:
+        case NUL:
+        default: 
+            break;
+    }
+
+    del_type();
+
+    switch (type) {
+        case BOL: m_bol = false; break;
+        case NUM: m_num = 0; break;
+        case STR: m_str = new_str; break;
+        case ARR: m_arr = new_arr; break;
+        case OBJ: m_obj = new_obj; break;
+        case NUL: break;
+        default: break;
+    }
+
+    m_type = type;
+
+    return 0;
+err:
+    if (new_str)
+        delete new_str;
+    if (new_arr)
+        delete new_arr;
+    if (new_obj)
+        delete new_obj;
+
+    return -1;
+}
+
+const json::type_t &json::type()
+{
+    return m_type; 
+}
+
+void json::set_key(const str_t &key)
+{
+    m_key = key;
+}
+
+const json::str_t &json::key()
+{
+    return m_key;
+}
+
+int json::set_bol(const bol_t &bol)
+{
+    if (BOL != m_type)
+        return -1;
+
+    m_bol = bol;
+    return 0;
+}
+
+json::bol_t json::bol()
+{
+    return (BOL == m_type) ? m_bol : false;
+}
+
+int json::set_num(const num_t &num)
+{
+    if (NUM != m_type)
+        return -1;
+
+    m_num = num;
+    return 0;
+}
+
+json::num_t json::num()
+{
+    return (NUM == m_type) ? m_num : 0;
+}
+
+json::str_t *json::str()
+{
+    return (STR == m_type) ? m_str : nullptr;
+}
+
+json::arr_t *json::arr()
+{
+    return (ARR == m_type) ? m_arr : nullptr;
+}
+
+json::obj_t *json::obj()
+{
+    return (OBJ == m_type) ? m_obj : nullptr;
+}
+
+bool json::is_num(const str_t &str) 
+{
+    for (const auto &ch: str)
+        if (!std::isdigit(ch) && '.' != ch)
+            return false;
+    return true;
+}
+
+bool json::is_bol(const str_t &str) 
+{
+    return (((str.length() == (sizeof("true")-1)) && 
+                !strcasecmp("true", str.c_str())) ||
+            ((str.length() == (sizeof("false")-1)) &&
+                !strcasecmp("false", str.c_str())));
+}
+
+void json::del_type()
+{
+    switch (m_type) {
+        case STR: del_str(); break;
+        case ARR: del_arr(); break;
+        case OBJ: del_obj(); break;
+        case BOL: m_bol = false; break;
+        case NUM: m_num = 0; break;
+        case NUL:
+        default: break;
+    }
+    m_type = NUL;
+}
+
+void json::del_str()
+{
+    assert(STR == m_type);
+    delete m_str;
+    m_str = nullptr;
+    m_type = NUL;
+}
+
+void json::del_arr()
+{
+    assert(ARR == m_type);
+    for (auto &iter: *m_arr) {
+        if (!iter) {
+            continue;
         }
 
-        json &operator=(const char *str)
-        {
-            return operator=(str_t(str));
+        delete iter;
+    }
+    m_arr->clear();
+    delete m_arr;
+    m_arr = nullptr;
+    m_type = NUL;
+}
+
+void json::del_obj()
+{
+    assert(OBJ == m_type);
+    for (auto &obj: *m_obj) {
+        if (!obj.second) {
+            continue;
         }
 
-        json &operator=(const str_t &str)
-        {
-            if (set_type(STR)) {
-                throw json("fail to set type str");
-                return *this;
-            }
-            *m_str = str;
+        delete obj.second;
+    }
+    m_obj->clear();
+    delete m_obj;
+    m_obj = nullptr;
+    m_type = NUL;
+}
 
-            return *this;
-        }
-
-        json &operator=(const arr_t &arr)
-        {
-            if (set_type(ARR)) {
-                throw json("fial to set type arr");
-                return *this;
-            }
-
-            for (const auto &iter: arr) {
-                json *dup_js = dup_json(iter);
-                if (dup_js) {
-                    throw json("fail to dup arr");
-                    return *this;
-                }
-                m_arr->push_back(dup_js);
-            }
-
-            return *this;
-        }
-
-        json &operator=(const json &js)
-        {
-            std::string err;
-
-            del_type();
-
-            switch (js.m_type) {
-                case NUM: 
-                    m_type = NUM;
-                    m_num = js.m_num; 
-                    break;
-                case BOL: 
-                    m_type = BOL;
-                    m_bol = js.m_bol; 
-                    break;
-                case STR: 
-                    m_type = STR;
-                    m_str = new(std::nothrow) str_t(*js.m_str);
-                    if (!m_str)
-                        throw json("fail to dup str");
-                    break;
-                case ARR:
-                    m_type = ARR;
-                    m_arr = dup_arr(js.m_arr);
-                    if (!m_arr)
-                        throw json("fail to dup arr");
-                    break;
-                case OBJ:
-                    m_type = OBJ;
-                    m_obj = dup_obj(js.m_obj);
-                    if (!m_obj)
-                        throw json("fail to dup obj");
-                    break;
-                case NUL:
-                default:
-                    m_type = NUL;
-                    break;
-            }
-
-            return *this;
-        }
-
-        json &operator=(const obj_t &obj)
-        {
-            if (set_type(STR)) {
-                throw json("fail to set type obj");
-                return *this;
-            }
-
-            for (const auto &iter: obj) {
-                json *dup_js = dup_json(iter.second);
-                if (dup_js) {
-                    throw json("fail to dup obj");
-                    return *this;
-                }
-                (*m_obj)[iter.first] = dup_js;
-            }
-
-            return *this;
-        }
-
-        json &operator[](const str_t &key)
-        { 
-            if (OBJ != m_type) {
-                throw json("not obj");
-                return *this;
-            } 
-
-            auto iter = m_obj->find(key);
-            if (iter != m_obj->end())
-                return *iter->second;
-
-            json *add = new(std::nothrow) json(key);
-            if (!add) {
-                throw json(std::string("fail to add key: ") + key);
-                return *this;
-            }
-            (*m_obj)[key] = add;
-            return *add;
-        }
-
-        type_t type()
-        { 
-            return m_type; 
-        }
-
-        void set_key(const str_t &key)
-        { 
-            m_key = key; 
-        }
-
-        str_t key()
-        {
-            return m_key;
-        }
-
-        bool bol()
-        { 
-            return BOL == m_type ? m_bol : false; 
-        }
-
-        double num()
-        { 
-            return NUM == m_type ? m_num : 0; 
-        }
-
-        str_t *str()
-        {
-            return STR == m_type ? m_str : nullptr; 
-        }
-
-        arr_t *arr()
-        {
-            return ARR == m_type ? m_arr : nullptr;
-        }
-
-        obj_t *obj()
-        { 
-            return OBJ == m_type ? m_obj : nullptr; 
-        }
-
-        bool is_num(const str_t &str) 
-        {
-            for (const auto &ch: str)
-                if (!std::isdigit(ch) && '.' != ch)
-                    return false;
-            return true;
-        }
-
-        bool is_bol(const str_t &str) 
-        {
-            return (((str.length() == (sizeof("true")-1)) && 
-                        !strcasecmp("true", str.c_str())) ||
-                    ((str.length() == (sizeof("false")-1)) &&
-                     !strcasecmp("false", str.c_str())));
-        }
-
-        void del_type()
-        {
-            switch (m_type) {
-                case STR: del_str(); break;
-                case ARR: del_arr(); break;
-                case OBJ: del_obj(); break;
-                case BOL: m_bol = false; break;
-                case NUM: m_num = 0; break;
-                case NUL:
-                default: m_type = NUL; break;
-            }
-        }
-
-        void del_str()
-        {
-            assert(STR == m_type);
-            delete m_str;
-            m_str = nullptr;
-            m_type = NUL;
-        }
-
-        void del_arr()
-        {
-            assert(ARR == m_type);
-            for (auto &iter: *m_arr) {
-                if (!iter) {
-                    continue;
-                }
-
-                //dmsg("del: %s\n", (iter)->to_str().c_str());
-
-                delete iter;
-            } 
-            m_arr->clear();
-            delete m_arr;
-            m_arr = nullptr;
-            m_type = NUL;
-        }
-
-        void del_obj()
-        {
-            assert(OBJ == m_type);
-            for (auto &obj: *m_obj) {
-                if (!obj.second) {
-                    continue;
-                }
-                // dmsg("del: %s\n", obj->to_str().c_str());
-
-                delete obj.second;
-            }
-            m_obj->clear();
-            delete m_obj;
-            m_obj = nullptr;
-            m_type = NUL;
-        }
-
-        int set_type(type_t type)
-        {
-            if (type == m_type)
-                return 0;
-
-            del_type();
-
-            switch (type) {
-                case BOL: 
-                    m_bol = bol_t(); 
-                    break;
-                case NUM: 
-                    m_num = num_t();
-                    break;
-                case STR: 
-                    m_str = new(std::nothrow) str_t(); 
-                    if (!m_str)
-                        return -1;
-                    break;
-                case ARR: 
-                    m_arr = new(std::nothrow) arr_t(); 
-                    if (!m_arr)
-                        return -1;
-                    break;
-                case OBJ:
-                    m_obj = new(std::nothrow) obj_t();
-                    if (!m_obj)
-                        return -1;
-                    break;
-                case NUL: 
-                default: 
-                    break;
-            }
-
-            m_type = type;
-
-            return 0;
-        }
-
-        str_t to_str();
-        int to_file(const char *file_name);
-        static json *load_str(const str_t &str);
-        static json *load_file(const char *file_name);
-
-    private:
-        static json *load_str_arr(const str_t &str, size_t &offset);
-        static json *load_str_obj(const str_t &str, size_t &offset);
-        static json *load_str_key_val(const str_t &str, size_t &offset);
-        static json *dup_json(const json *js);
-        static arr_t *dup_arr(const arr_t *arr);
-        static obj_t *dup_obj(const obj_t *obj);
-
-    private:
-        type_t m_type;
-        str_t m_key;
-        union {
-            bol_t m_bol;
-            num_t m_num;
-            str_t *m_str;
-            arr_t *m_arr;
-            obj_t *m_obj;
-        };
-};
-
-json::str_t json::to_str()
+const json::str_t json::to_str()
 {
     str_t out_str;
     bool is_first = true;
@@ -436,7 +474,7 @@ json::str_t json::to_str()
             break;
         case ARR:
             out_str += "[ ";
-            if (!arr()) {
+            if (arr()->empty()) {
                 out_str += " ]";
                 break;
             }
@@ -445,15 +483,16 @@ json::str_t json::to_str()
                     continue;
                 if (!is_first)
                     out_str += ", ";
+                else
+                    is_first = false;
                 out_str += iter->to_str();
-                is_first = false;
             }
             out_str += " ]";
             break;
         case OBJ:
             dmsg("");
             out_str += "{ ";
-            if (!obj()) {
+            if (obj()->empty()) {
                 out_str += " }";
                 break;
             }
@@ -462,8 +501,10 @@ json::str_t json::to_str()
                     continue;
                 if (!is_first)
                     out_str += ", ";
+                else
+                    is_first = false;
+
                 out_str += iter.second->to_str();
-                is_first = false;
             }
             out_str += " }";
             break;
@@ -763,10 +804,8 @@ json *json::load_str_obj(const str_t &str, size_t &offset)
             goto err;
         dmsg("insert iter:%s, type:%d", iter->to_str().c_str(), iter->type());
         json::obj_t *o = obj->obj();
-        if (!o)
-            goto err;
-        assert(iter);
         assert(o);
+        assert(iter);
         (*o)[iter->key()] = iter;
         if (',' == str.at(offset)) {
             ++offset;
@@ -830,7 +869,7 @@ int json::to_file(const char *file_name)
     if (!file_name)
         return -1;
 
-    std::ofstream outfile(file_name, std::ios::out | std::ios::trunc );
+    std::ofstream outfile(file_name, std::ios::out | std::ios::trunc);
 
     outfile << to_str();
 
@@ -859,6 +898,8 @@ json *json::load_file(const char *file_name)
 
 json *json::dup_json(const json *js)
 {
+    assert(js);
+
     switch (js->m_type) {
         case NUM: return new(std::nothrow) json(js->m_key, js->m_num);
         case BOL: return new(std::nothrow) json(js->m_key, js->m_bol);
@@ -907,7 +948,7 @@ json::obj_t *json::dup_obj(const obj_t *obj)
         if (!dup_iter)
             goto err;
 
-        (*new_obj)[dup_iter->key()] = dup_iter;
+        (*new_obj)[dup_iter->m_key] = dup_iter;
     }
 
     return new_obj;
@@ -918,7 +959,7 @@ err:
     return nullptr;
 }
 
-#ifndef main
+#ifdef __XTEST__
 
 #include <iostream>
 
@@ -949,15 +990,15 @@ int main(int argc, char *argv[])
             });
 
     cout << "before: " << jobj.to_str() << "\n";
-    try {
-        jobj["fuck"] = true;
-        jobj["moe"] = "?";
-        jobj["*"] = 996.007;
-        jobj["-"] = 0;
-        jobj["num"] = jobj["*"].num() + 1000;
-    } catch (json e) {
-        cout << "catch fail: " << e.to_str() << "\n";
-    }
+    
+    jobj["fuck"][0] = true;
+    jobj["moe"][0] = "?";
+    jobj["*"][0] = 996.007;
+    jobj["-"][0] = 0;
+    jobj["num"][0] = jobj["*"]->num() + 1000;
+    jobj["func"][0] = json(json::OBJ);
+    jobj["func"][0]["add"][0] = jobj["num"]->num() + 1;
+
     cout << "after:  " << jobj.to_str() << "\n";
 
     cout << js.to_str() << "\n"
@@ -967,7 +1008,7 @@ int main(int argc, char *argv[])
         << jarr_str.to_str() << "\n"
         << jarr_num.to_str() << "\n"
         << root.to_str() << "\n"
-        << root["B"].to_str() << "\n"
+        << root["B"]->to_str() << "\n"
         << "\n";
 
     cout << "out > 1.js" << "\n";
@@ -988,4 +1029,4 @@ int main(int argc, char *argv[])
     return 0;
 }
 
-#endif
+#endif//__XTEST__

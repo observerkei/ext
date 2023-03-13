@@ -4,7 +4,7 @@ INC =
 ASAN_LIB = -lasan
 LIB = 
 ASAN_FLAG = -fsanitize=address -fsanitize-recover=all -D__SANITIZE_ADDRESS__=1 -fno-omit-frame-pointer 
-FLAG = -g
+FLAG = -g -D__XTEST__
 CC = g++
 
 $(TARGET): *.c* 
